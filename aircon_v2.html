@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>壁掛けエアコン 分解洗浄</title>
+<meta name="description" content="壁掛けエアコンの分解洗浄を、断面と工程で見せる30秒の縦長ショート（改訂2版）。Built with the Machine Skill (MIT).">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@500;700;900&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<style>
+  /* 縦長ショート用の字幕と、フィルム中は使わない操作UIを隠す */
+  .aj-cap { position:fixed; left:0; right:0; bottom:9.5vh; display:flex; justify-content:center; pointer-events:none; z-index:20 }
+  .aj-cap div { max-width:94vw; white-space:nowrap; text-align:center; font-family:'Noto Sans JP',sans-serif; font-weight:700; font-size:4.0vw; line-height:1.45; letter-spacing:0.02em; color:#141414;
+    background:rgba(255,255,255,0.88); padding:0.55em 0.9em; border-radius:0.5em; box-shadow:0 0.15em 0.9em rgba(0,0,0,0.08); opacity:0 }
+  .aj-sign { position:fixed; left:0; right:0; top:11vh; text-align:center; font-family:'Noto Sans JP',sans-serif; font-weight:500; font-size:3.4vw; letter-spacing:0.18em; color:#2b2b2b; opacity:0; pointer-events:none; z-index:20 }
+  .aj-sign span { border-top:1px solid #9a968e; border-bottom:1px solid #9a968e; padding:0.5em 1.2em }
+  .lab-film .lab-prompt, .lab-film .lab-pills, .lab-film .lab-side, .lab-film .lab-modes, .lab-film .lab-beat, .lab-film .lab-brand, .lab-film .lab-scale, .lab-film .lab-cursor { display:none !important }
+  .lab-film .lab-lab { font-family:'Noto Sans JP',sans-serif; font-weight:700; font-size:3.3vw; text-shadow:0 0 4px #fff, 0 0 10px #fff, 0 0 18px #fff }
+  .lab-lab { font-family:'Noto Sans JP','Inter',sans-serif }
+  html:not(.lab-film) .aj-cap, html:not(.lab-film) .aj-sign { display:none }
+  .lab-flash { display:none }
+</style>
+</head>
+<body>
+<div class="aj-cap"><div></div></div>
+<!-- lab-kit:start -->
+<script type="module" src="../kit/lab-kit.js"></script>
+<!-- lab-kit:end -->
+<script type="module">
+/*
+  壁掛けエアコン（ルームエアコン室内機・2.2 kW クラス）
+  実寸の目安（主要国内メーカーの6畳用室内機の公表寸法に近い値。特定機種の再現ではない）
+    幅 0.80 m × 高さ 0.29 m × 奥行 0.23 m、質量 約 8 kg
+    熱交換器：アルミフィン＋銅管、3面（前下・前上・後上）、厚さ約 22 mm、フィンピッチ 約 1.2〜1.5 mm（表示は 4 mm 間隔に間引き）
+    送風ファン：クロスフローファン（横流ファン）直径 約 100 mm、長さ 約 620 mm、羽根 35 枚 × 6 連
+    ドレンパン：前面熱交換器の下、右端にドレンホース
+  部品（組立順）：壁、背面シャーシ、スクロール、スタビライザ、ドレンパン、熱交換器×3、管板、銅管、
+    クロスフローファン、ファンモーター、電装ボックス、基板、左右サイドパネル、天面グリル、フィルター×2、
+    前面パネル、上下ルーバー、左右ルーバー×10、ドレンホース、ホースクリップ×2、バケツ、洗浄ノズル
+  物理（簡易）：
+    周速 U = π D n / 60、クロスフローファン風量 Q = φ U D L（流量係数 φ ≈ 0.55）
+    汚れ（目詰まり）で熱交換器の圧力損失が増え、風量は Q = Q0 / sqrt(1 + k d)（d: 汚れ度 0〜1、k ≈ 1.2）
+    ヒーロー：風量 m³/min、入力：ファン回転数 rpm
+*/
+import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js'
+const { THREE, Lab, MAT, GEO, clamp, lerp, approach, smoothstep, fmt, rng, LAYER_FX } = window.LabKit
+
+const Y0 = 0.78            // 室内機の底の高さ（m、床から）
+const W = 0.80             // 室内機の幅
+const lab = new Lab({
+  prompt: 'a wall-mounted split air conditioner, front cover and filters removed, cut open to show the heat exchanger coil, the cross-flow fan and the drain pan, dirty water dripping into the drain pan and flowing out through the drain hose, then reassembled and blowing clean air',
+  no: 1, title: 'エアコン', sub: '分解洗浄',
+  size: 1.3,
+  view: { az: -22, el: 8, dist: 1.9, target: [0.04, 0.72, 0.1], fov: 36 },
+  cut: { a: [-1, 0, 0], b: [-1, 0, 0], center: [-0.05, 0, 0], reach: 0.9 },
+  pills: ['three.js', '分解洗浄', 'Film'],
+})
+
+// 描画の重い環境（GPUなしのクラウド等）での試し書き出し用：?lite=1 で陰影処理(GTAO)を省く
+if (lab.q.has('lite')) { for (const p of lab.composer.passes) if (/GTAO/.test(p.constructor.name)) p.enabled = false; lab.key.shadow.mapSize.set(1024, 1024) }
+
+// ---------------------------------------------------------------- 形状のヘルパー（断面 (z, y) を X 方向に押し出す）
+const V2 = THREE.Vector2
+function extrudeX(pts, x0, x1, crease = 0.6) {
+  const sh = new THREE.Shape(pts.map(([z, y]) => new V2(-z, y)))
+  let g = new THREE.ExtrudeGeometry(sh, { depth: x1 - x0, bevelEnabled: false, curveSegments: 24 })
+  g.rotateY(Math.PI / 2); g.translate(x0, 0, 0)
+  g = toCreasedNormals(g, crease)
+  return g
+}
+function arc(cz, cy, r, a0, a1, n = 16, r1 = r) {
+  const out = []
+  for (let i = 0; i <= n; i++) { const t = i / n, a = THREE.MathUtils.degToRad(lerp(a0, a1, t)), rr = lerp(r, r1, t); out.push([cz + rr * Math.cos(a), cy + rr * Math.sin(a)]) }
+  return out
+}
+// 折れ線に厚みをつけた閉じた断面（左手側へ t）
+function thick(poly, t) {
+  const nrm = (i) => {
+    const a = poly[Math.max(0, i - 1)], b = poly[Math.min(poly.length - 1, i + 1)]
+    const dz = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dz, dy) || 1
+    return [-dy / L, dz / L]
+  }
+  const inner = poly.map((p, i) => { const n = nrm(i); return [p[0] + n[0] * t, p[1] + n[1] * t] })
+  return [...poly, ...inner.reverse()]
+}
+function box(w, h, d, x, y, z, rx = 0) { const g = new THREE.BoxGeometry(w, h, d); if (rx) g.rotateX(rx); g.translate(x, y, z); return g }
+
+// ---------------------------------------------------------------- 材料
+const white = MAT.paint({ color: [0.93, 0.93, 0.925], roughness: 0.28, clearcoat: 0.5 })
+const whiteSatin = MAT.plastic({ color: [0.82, 0.82, 0.8], roughness: 0.5 })
+const greyPlastic = MAT.plastic({ color: [0.62, 0.64, 0.66], roughness: 0.55 })
+const panPlastic = MAT.plastic({ color: [0.7, 0.72, 0.76], roughness: 0.5 })
+const finMat = MAT.aluminium({ roughness: 0.42, finish: 'brushed' })
+const fanMat = MAT.plastic({ color: [0.78, 0.79, 0.78], roughness: 0.48 })
+const filterMat = MAT.plastic({ color: [0.72, 0.74, 0.76], roughness: 0.7, finish: 'knurl', rep: [40, 8] })
+const copper = MAT.copper()
+const steel = MAT.steel()
+const galv = MAT.stainless({ roughness: 0.38 })
+const motorMat = MAT.satin({ color: [0.06, 0.06, 0.065] })
+const pcbMat = MAT.plastic({ color: [0.05, 0.32, 0.16], roughness: 0.4 })
+const chipMat = MAT.plastic({ color: [0.03, 0.03, 0.035] })
+const hoseMat = MAT.plastic({ color: [0.5, 0.52, 0.54], roughness: 0.62, finish: 'turned', rep: [1, 220] })
+const bucketMat = MAT.plastic({ color: [0.25, 0.42, 0.62], roughness: 0.42 })
+const dirtyWater = MAT.fluid({ color: [0.22, 0.12, 0.05], roughness: 0.1 })
+const dirtyWater2 = MAT.fluid({ color: [0.22, 0.12, 0.05], roughness: 0.1 })
+// 汚れの色（黒カビ・ホコリ）
+const C = (a) => new THREE.Color().setRGB(...a)
+const DIRT = {
+  fin: [C([0.88, 0.89, 0.9]), C([0.46, 0.44, 0.41])],
+  fan: [C([0.78, 0.79, 0.78]), C([0.34, 0.33, 0.31])],
+  filter: [C([0.72, 0.74, 0.76]), C([0.34, 0.32, 0.29])],
+  pan: [C([0.7, 0.72, 0.76]), C([0.22, 0.2, 0.17])],
+}
+
+// ---------------------------------------------------------------- 壁（切断しない）
+const wallMat = new THREE.MeshStandardMaterial({ color: 0x2c6b6e, roughness: 0.9 })  // 落ち着いた青緑（ティール）
+const wall = lab.add(new THREE.Mesh(GEO.rbox(2.6, 1.7, 0.08, 0.006), wallMat), { name: '壁' })
+lab.place(wall, 0, 0.85, -0.04)
+const skirt = lab.add(new THREE.Mesh(GEO.rbox(2.6, 0.07, 0.012, 0.003), new THREE.MeshStandardMaterial({ color: 0x1f4d50, roughness: 0.6 })), { name: '幅木' })
+lab.place(skirt, 0, 0.035, 0.006)
+
+// 室内機のグループ（壁に掛かる）
+const U = new THREE.Group(); U.position.set(0, Y0, 0); lab.machine.add(U)
+const P = (o) => ({ parent: U, ...o })
+const xL = -W / 2 + 0.012, xR = W / 2 - 0.012
+
+// 背面シャーシ
+lab.mesh(GEO.rbox(W - 0.024, 0.255, 0.012, 0.003), whiteSatin, P({ name: '背面シャーシ', pos: [0, 0.158, 0.006] }))
+// 据付板（壁との間）
+lab.mesh(GEO.rbox(W - 0.1, 0.2, 0.002, 0.0008), galv, P({ name: '据付板', pos: [0, 0.16, -0.001] }))
+
+// スクロール（ファンの後ろから吹出口へ空気を導く渦巻き）
+const FC = [0.088, 0.104]        // ファン中心 (z, y)
+const FR = 0.05                  // ファン半径
+const scrollPoly = [...arc(FC[0], FC[1], 0.058, 150, 285, 30, 0.072), [0.135, 0.028], [0.172, 0.012]]
+lab.mesh(extrudeX(thick(scrollPoly, -0.005), xL, xR), whiteSatin, P({ name: 'スクロール' }))
+// スタビライザ（ファン前下の舌部）
+lab.mesh(extrudeX([[0.148, 0.074], [0.128, 0.066], [0.132, 0.056], [0.152, 0.06]], xL, 0.3), greyPlastic, P({ name: 'スタビライザ' }))
+
+// ドレンパン（前面熱交換器の下の受け皿）
+const panPts = [[0.15, 0.09], [0.15, 0.062], [0.158, 0.053], [0.216, 0.053], [0.224, 0.062], [0.224, 0.09], [0.218, 0.09], [0.218, 0.065], [0.213, 0.059], [0.161, 0.059], [0.156, 0.065], [0.156, 0.09]]
+const pan = lab.mesh(extrudeX(panPts, xL + 0.004, 0.31, 0.3), panPlastic, P({ name: 'ドレンパン', label: 'ドレンパン（受け皿）', at: [0.0, 0.056, 0.19], side: 'left' }))
+// ドレン口
+lab.mesh(GEO.tube(0.009, 0.006, 0.03).rotateZ(Math.PI / 2).translate(0.32, 0.062, 0.187), panPlastic, P({ name: 'ドレン口' }))
+// パンにたまる汚れ水
+const panWater = new THREE.Mesh(extrudeX([[0.162, 0.06], [0.212, 0.06], [0.212, 0.075], [0.162, 0.075]], xL + 0.008, 0.305), dirtyWater); U.add(panWater)
+panWater.visible = false
+
+// 熱交換器：アルミフィン（間引き表示）＋銅管＋管板
+const coilX0 = -0.37, coilX1 = 0.29
+const SLABS = [
+  { a: [0.182, 0.092], b: [0.182, 0.172] },   // 前下
+  { a: [0.182, 0.172], b: [0.112, 0.252] },   // 前上
+  { a: [0.106, 0.252], b: [0.034, 0.196] },   // 後上
+]
+const CT = 0.022
+const finGeos = [], tubeGeos = [], sheetGeos = [], dustGeos = []
+for (const [si, s] of SLABS.entries()) {
+  const dz = s.b[0] - s.a[0], dy = s.b[1] - s.a[1], L = Math.hypot(dz, dy)
+  const ang = Math.atan2(dy, dz)
+  const mz = (s.a[0] + s.b[0]) / 2, my = (s.a[1] + s.b[1]) / 2
+  const nz = -Math.sin(ang), ny = Math.cos(ang)  // 厚み方向（ファン側が負）
+  const cz = mz - nz * CT / 2 * Math.sign(nz * (FC[0] - mz) + ny * (FC[1] - my)), cy = my - ny * CT / 2 * Math.sign(nz * (FC[0] - mz) + ny * (FC[1] - my))
+  if (si < 2) {  // ホコリの膜：前面2枚の外側（ファンと反対側）
+    const sg = Math.sign(nz * (FC[0] - mz) + ny * (FC[1] - my)), off = CT / 2 + 0.0014
+    const g = new THREE.BoxGeometry(coilX1 - coilX0 - 0.01, 0.0018, L); g.rotateX(-(ang - Math.PI / 2) + Math.PI / 2)
+    g.translate((coilX0 + coilX1) / 2, cy - ny * sg * off, cz - nz * sg * off); dustGeos.push(g)
+  }
+  for (let x = coilX0 + 0.004; x < coilX1 - 0.002; x += 0.004) {
+    const g = new THREE.BoxGeometry(0.0006, CT, L)
+    g.rotateX(-(ang - Math.PI / 2) + Math.PI / 2); g.translate(x, cy, cz); finGeos.push(g)
+  }
+  for (const xe of [coilX0, coilX1]) { const g = new THREE.BoxGeometry(0.003, CT + 0.004, L + 0.004); g.rotateX(-ang + 0); g.rotateX(0); g.translate(xe, cy, cz); sheetGeos.push(g) }
+  const nT = Math.round(L / 0.02)
+  for (let i = 0; i < nT; i++) for (const row of [-1, 1]) {
+    const u = (i + 0.5 + row * 0.25) / nT - 0.5
+    const tz = cz + Math.cos(ang) * u * L + nz * row * 0.0055, ty = cy + Math.sin(ang) * u * L + ny * row * 0.0055
+    const g = new THREE.CylinderGeometry(0.0036, 0.0036, coilX1 - coilX0 + 0.024, 12); g.rotateZ(Math.PI / 2); g.translate((coilX0 + coilX1) / 2, ty, tz); tubeGeos.push(g)
+    if (row === 1 && i % 2 === 0 && i + 1 < nT) {  // 左端のU字ベンド
+      const t2 = (i + 1.5 + 0.25) / nT - 0.5
+      const z2 = cz + Math.cos(ang) * t2 * L + nz * 0.0055, y2 = cy + Math.sin(ang) * t2 * L + ny * 0.0055
+      const r = Math.hypot(z2 - tz, y2 - ty) / 2
+      const tor = new THREE.TorusGeometry(r, 0.0036, 8, 16, Math.PI)
+      tor.rotateZ(Math.PI / 2); tor.rotateX(Math.atan2(z2 - tz, y2 - ty)); tor.translate(coilX0 - 0.012, (ty + y2) / 2, (tz + z2) / 2); tubeGeos.push(tor)
+    }
+  }
+}
+// 各スラブの回転：BoxGeometry(長さ方向=Z) を断面の傾きに合わせる
+// （上のループで rotateX を使っているので、フィンは各面の向きに沿う）
+const fins = lab.mesh(GEO.merge(finGeos), finMat, P({ name: '熱交換器（フィン）', count: finGeos.length, label: '熱交換器（フィン）', at: [-0.04, 0.215, 0.15], side: 'right' }))
+lab.mesh(GEO.merge(sheetGeos), galv, P({ name: '管板' }))
+// ホコリとカビの膜（灰色の膜に黒い点）。濃さは汚れ度 d で変わる
+function dustTex() {
+  const c = document.createElement('canvas'); c.width = c.height = 512; const g = c.getContext('2d'), r = rng(5)
+  g.fillStyle = 'rgba(128,122,112,1)'; g.fillRect(0, 0, 512, 512)
+  for (let i = 0; i < 2600; i++) { const v = 95 + r() * 70; g.fillStyle = `rgba(${v},${v - 4},${v - 10},0.5)`; g.fillRect(r() * 512, r() * 512, 2 + r() * 5, 1 + r() * 3) }
+  for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(20,20,18,${0.5 + r() * 0.5})`; g.beginPath(); g.arc(r() * 512, r() * 512, 0.8 + r() * 2.6, 0, 7); g.fill() }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(6, 1); return t
+}
+const dustMat = MAT.plastic({ color: [1, 1, 1], map: dustTex(), roughness: 0.95, transparent: true, opacity: 0.85, depthWrite: false, noCap: true, finish: null })
+const dust = new THREE.Mesh(GEO.merge(dustGeos), dustMat); U.add(dust)
+lab.mesh(GEO.merge(tubeGeos), copper, P({ name: '銅管', count: tubeGeos.length }))
+
+// クロスフローファン（X 軸まわりに回る）
+const fanX0 = -0.36, fanX1 = 0.255, fanL = fanX1 - fanX0
+const fan = new THREE.Group(); fan.position.set((fanX0 + fanX1) / 2, FC[1], FC[0])
+{
+  const NB = 35, NS = 6, segL = fanL / NS
+  const bl = []
+  for (let s = 0; s < NS; s++) for (let i = 0; i < NB; i++) {
+    const a = (i / NB) * Math.PI * 2
+    const g = new THREE.BoxGeometry(segL - 0.003, 0.0012, 0.013)
+    g.rotateX(0.55)                                 // 羽根の取付角
+    g.translate(-fanL / 2 + segL * (s + 0.5), 0, FR - 0.008)
+    g.rotateX(a); bl.push(g)
+  }
+  const discs = []
+  for (let s = 0; s <= NS; s++) { const d = GEO.disc(FR, 0.003, 0.0008, 48).rotateZ(Math.PI / 2); d.translate(-fanL / 2 + segL * s, 0, 0); discs.push(d) }
+  fan.add(new THREE.Mesh(GEO.merge(bl), fanMat), new THREE.Mesh(GEO.merge(discs), fanMat))
+  const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, fanL + 0.06, 16).rotateZ(Math.PI / 2), steel); fan.add(sh)
+}
+lab.add(fan, P({ name: '送風ファン', count: 35 * 6 + 7, label: '送風ファン', at: [-0.02, -0.03, 0.04], side: 'left' }))
+// ファンモーター
+lab.mesh(GEO.disc(0.034, 0.05, 0.004).rotateZ(Math.PI / 2), motorMat, P({ name: 'ファンモーター', pos: [0.285, FC[1], FC[0]] }))
+lab.mesh(GEO.rbox(0.012, 0.11, 0.1, 0.002), whiteSatin, P({ name: 'モーター受け', pos: [0.316, FC[1] - 0.005, 0.07] }))
+
+// 電装ボックスと基板（右端、前面パネルの裏）
+const ebox = lab.mesh(GEO.rbox(0.058, 0.19, 0.07, 0.003), galv, P({ name: '電装ボックス', pos: [0.357, 0.165, 0.17] }))
+const pcb = new THREE.Group(); pcb.position.set(0.357, 0.165, 0.206)
+pcb.add(new THREE.Mesh(GEO.rbox(0.05, 0.17, 0.003, 0.001), pcbMat))
+{
+  const R = rng(7), parts = []
+  for (let i = 0; i < 14; i++) parts.push(box(0.006 + R() * 0.01, 0.006 + R() * 0.012, 0.004, (R() - 0.5) * 0.036, (R() - 0.5) * 0.15, 0.003))
+  pcb.add(new THREE.Mesh(GEO.merge(parts), chipMat))
+  const caps = []; for (let i = 0; i < 3; i++) { const c = new THREE.CylinderGeometry(0.005, 0.005, 0.012, 16).rotateX(Math.PI / 2); c.translate(-0.012 + i * 0.012, -0.06, 0.008); caps.push(c) }
+  pcb.add(new THREE.Mesh(GEO.merge(caps), MAT.plastic({ color: [0.05, 0.1, 0.3] })))
+}
+lab.add(pcb, P({ name: '基板', label: '基板', at: [0, 0.04, 0.004], side: 'right' }))
+
+// 左右サイドパネル（外形の断面）
+const sil = [[0, 0.03], [0, 0.29], [0.163, 0.29], ...arc(0.163, 0.226, 0.064, 90, 0, 12), [0.227, 0.078], [0.222, 0.052], [0.204, 0.036], [0.176, 0.02], [0.13, 0.008], [0.06, 0.0], [0.024, 0.0], [0.006, 0.008]]
+lab.mesh(extrudeX(sil, -W / 2, -W / 2 + 0.012, 0.5), white, P({ name: '左サイドパネル' }))
+lab.mesh(extrudeX(sil, W / 2 - 0.012, W / 2, 0.5), white, P({ name: '右サイドパネル' }))
+// 底面（吹出口の後ろ側）
+lab.mesh(extrudeX(thick([[0.006, 0.008], [0.024, 0.0], [0.06, 0.0], [0.13, 0.008]], 0.005), xL, xR, 0.5), white, P({ name: '底面カバー' }))
+// 前面下のリップ（ドレンパンの前）
+lab.mesh(extrudeX(thick([[0.227, 0.09], [0.227, 0.078], [0.222, 0.052], [0.204, 0.036]], 0.005), xL, xR, 0.5), white, P({ name: '前面下カバー', explode: [0, 0, 0] }))
+
+// 天面グリル（吸込口）
+{
+  const bars = []
+  for (let z = 0.02; z < 0.158; z += 0.0115) bars.push(box(W - 0.024, 0.006, 0.006, 0, 0.287, z))
+  bars.push(box(0.012, 0.006, 0.145, -0.2, 0.287, 0.088), box(0.012, 0.006, 0.145, 0.0, 0.287, 0.088), box(0.012, 0.006, 0.145, 0.2, 0.287, 0.088))
+  lab.mesh(GEO.merge(bars), white, P({ name: '天面グリル', count: bars.length }))
+}
+
+// フィルター×2（天面〜前面に沿う網）
+const filterPoly = [[0.03, 0.276], [0.15, 0.277], ...arc(0.15, 0.222, 0.055, 90, 10, 10), [0.208, 0.15], [0.208, 0.105]]
+const filters = []
+for (const [x0, x1, ex] of [[-0.375, -0.045, -0.06], [-0.035, 0.3, 0.06]]) {
+  const f = lab.mesh(extrudeX(thick(filterPoly, -0.003), x0, x1, 0.5), filterMat, P({ name: 'フィルター', explode: [ex, 0.3, 0.16] }))
+  filters.push(f)
+}
+
+// 前面パネル
+const frontPoly = [[0.155, 0.2935], ...arc(0.163, 0.226, 0.068, 97, 0, 16), [0.231, 0.088]]
+const front = lab.mesh(extrudeX(thick(frontPoly, 0.006), -W / 2 + 0.006, W / 2 - 0.006, 0.5), white, P({ name: '前面パネル', explode: [0, 0.16, 0.42] }))
+// 表示ランプ
+lab.mesh(GEO.rbox(0.03, 0.004, 0.002, 0.001), MAT.glow({ emissive: [0.3, 0.8, 1], emissiveIntensity: 2 }), P({ name: '運転ランプ', pos: [0.3, 0.1, 0.2375], explode: [0, 0.16, 0.42] }))
+
+// 上下ルーバー（吹出口のフラップ）。回転の軸は後ろの縁
+const louverPivot = new THREE.Group(); louverPivot.position.set(0, 0.022, 0.135)
+const louverPoly = arc(0.0, 0.16, 0.16, -90, -66, 10).map(([z, y]) => [z, y])
+louverPivot.add(new THREE.Mesh(extrudeX(thick(louverPoly, 0.004), -0.37, 0.3, 0.5), white))
+lab.add(louverPivot, P({ name: '上下ルーバー', explode: [0, -0.2, 0.25] }))
+// 左右ルーバー（吹出口の縦羽根）
+const vanes = new THREE.Group()
+{ const vg = []; for (let i = 0; i < 10; i++) vg.push(box(0.0025, 0.034, 0.05, -0.33 + i * 0.068, 0.045, 0.115)); vanes.add(new THREE.Mesh(GEO.merge(vg), greyPlastic)) }
+lab.add(vanes, P({ name: '吹出口', count: 10, explode: [0, -0.13, 0.12] }))
+
+// ドレンホース（右下から壁沿いにバケツへ）
+const hosePts = [[0.335, Y0 + 0.062, 0.187], [0.37, Y0 + 0.055, 0.17], [0.4, Y0 + 0.0, 0.1], [0.42, Y0 - 0.06, 0.03], [0.425, Y0 - 0.2, 0.022], [0.425, 0.42, 0.022], [0.43, 0.33, 0.05], [0.45, 0.27, 0.11], [0.45, 0.23, 0.13]]
+lab.mesh(GEO.pipe(hosePts, 0.0095, { seg: 160 }), hoseMat, { name: 'ドレンホース' })
+for (const y of [0.62, 0.45]) lab.mesh(GEO.rbox(0.03, 0.02, 0.014, 0.003), whiteSatin, { name: 'ホースクリップ', pos: [0.425, y, 0.01] })
+const HOSE_END = new THREE.Vector3(0.45, 0.225, 0.13)
+
+// バケツ
+const bucket = lab.mesh(GEO.lathe([[0, 0], [0.1, 0], [0.115, 0.2], [0.111, 0.2], [0.097, 0.005], [0, 0.005]], 64), bucketMat, { name: 'バケツ', pos: [0.45, 0.002, 0.15] })
+const bucketWater = new THREE.Mesh(GEO.disc(0.1, 0.004, 0.001, 64), dirtyWater2); bucketWater.position.set(0.45, 0.01, 0.15); lab.machine.add(bucketWater)
+bucketWater.visible = false
+const streamMat = MAT.fluid({ color: [0.3, 0.17, 0.07], transparent: true, opacity: 0.9, noCap: true })
+const stream = new THREE.Mesh(new THREE.CylinderGeometry(0.0055, 0.0045, 1, 16).translate(0, -0.5, 0), streamMat); lab.machine.add(stream); stream.visible = false
+
+// 洗浄ノズル（ステンレスのランス）
+const lance = new THREE.Group()
+lance.add(new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.26, 16).rotateX(Math.PI / 2).translate(0, 0, 0.13), MAT.stainless()))
+lance.add(new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.009, 0.03, 16).rotateX(Math.PI / 2).translate(0, 0, -0.012), MAT.brass()))
+lance.add(new THREE.Mesh(GEO.rbox(0.03, 0.05, 0.08, 0.008).translate(0, -0.015, 0.29), MAT.plastic({ color: [0.9, 0.42, 0.1] })))
+lab.machine.add(lance)
+lance.visible = false
+
+// ---------------------------------------------------------------- 粒子（泡・しぶき・汚れ水）
+function dotTex() {
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d')
+  const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.55, 'rgba(255,255,255,0.85)'); gr.addColorStop(1, 'rgba(255,255,255,0)')
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t
+}
+const DOT = dotTex()
+function points(n, size) {
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3))
+  g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 4), 4))
+  const m = new THREE.PointsMaterial({ size, map: DOT, vertexColors: true, transparent: true, depthWrite: false, sizeAttenuation: true, toneMapped: false })
+  const p = new THREE.Points(g, m); p.frustumCulled = false; p.layers.set(LAYER_FX); p.renderOrder = 4
+  lab.fx.add(p); return p
+}
+const NSPR = 900, NDROP = 260
+const spray = points(NSPR, 0.04), drops = points(NDROP, 0.05)
+// 粒子ごとの固定乱数（時間だけで位置が決まる＝毎回同じ映像）
+const R = rng(11)
+const sprayP = Array.from({ length: NSPR }, (_, i) => {
+  const s = SLABS[R() < 0.55 ? 0 : 1], u = R()
+  const z = lerp(s.a[0], s.b[0], u) + 0.012, y = lerp(s.a[1], s.b[1], u)
+  return { s: (i / NSPR) * 3.4 + R() * 0.05, x: lerp(-0.03, 0.27, R()), z, y: y + Y0, stick: 0.2 + R() * 0.6, j: [R() - 0.5, R() - 0.5, R() - 0.5], foam: R() < 0.7 }
+})
+const NAIR = 360
+const air = points(NAIR, 0.016)
+const airP = Array.from({ length: NAIR }, () => ({ x: lerp(-0.08, 0.26, R()), y: lerp(0.1, 0.16, R()), ph: R(), sp: 0.8 + R() * 0.4, r: R() }))
+const dropP = Array.from({ length: NDROP }, (_, i) => ({ s: 3.6 + (i / NDROP) * 6.5 + R() * 0.08, j: [R() - 0.5, R() - 0.5] }))
+const nozzleAt = (w) => {  // 洗浄ノズルの先端（右から左へなでる）
+  const k = clamp(w / 3.4)
+  return new THREE.Vector3(lerp(0.27, -0.02, k), Y0 + 0.17 + 0.03 * Math.sin(k * 9), 0.34)
+}
+
+// ---------------------------------------------------------------- 風（きれいな風の矢印）
+const arrowMat = new THREE.MeshBasicMaterial({ color: 0x5fb4ff, transparent: true, opacity: 0, depthWrite: false, toneMapped: false })
+const arrows = []
+for (const x of [-0.3, -0.15, 0.0, 0.15]) for (const ph of [0, 0.5]) {
+  const a = new THREE.Group()
+  a.add(new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.09, 12).translate(0, -0.045, 0), arrowMat.clone()))
+  a.add(new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.04, 16).rotateX(Math.PI).translate(0, -0.105, 0), arrowMat.clone()))
+  a.layers.set(LAYER_FX); a.traverse((m) => m.layers.set(LAYER_FX))
+  a.userData = { x, ph, curve: new THREE.CatmullRomCurve3([new THREE.Vector3(x, Y0 + 0.0, 0.2), new THREE.Vector3(x, Y0 - 0.12, 0.33), new THREE.Vector3(x, Y0 - 0.28, 0.46), new THREE.Vector3(x, Y0 - 0.42, 0.56)]) }
+  lab.fx.add(a); arrows.push(a)
+}
+
+// ---------------------------------------------------------------- ソルバー
+lab.hero({ label: '風量', unit: 'm³/min', max: 16, digits: 1 })
+const rpm = lab.slider({ id: 'rpm', label: 'ファン回転数', min: 0, max: 1300, value: 1100, unit: 'rpm', ends: ['停止', '強風'] })
+const S = { n: 0, dirt: 1, washT0: -1, run: lab.filmMode ? 0 : 1, louver: 0, arrows: 0, dirtAnim: null, hide: false, dots: 0, fxOff: false, air: 0 }
+const D = 0.1, PHI = 0.55, KF = 1.2
+function airflow(n, dirt) {
+  const Uc = Math.PI * D * n / 60            // 周速 m/s
+  const Q0 = PHI * Uc * D * fanL             // m³/s（きれいな状態）
+  const Q = Q0 / Math.sqrt(1 + KF * dirt)    // 目詰まりによる低下
+  return { Uc, Q0, Q }
+}
+lab.breakIt({ label: '洗浄する', run: () => { S.washT0 = lab.time }, reset: () => { S.washT0 = -1; S.dirt = 1 } })
+
+const col4 = (arr, i, r, g, b, a) => { arr[i * 4] = r; arr[i * 4 + 1] = g; arr[i * 4 + 2] = b; arr[i * 4 + 3] = a }
+lab.onTick((dt, lab) => {
+  const t = lab.time
+  const w = S.washT0 >= 0 ? t - S.washT0 : -1
+  // 汚れ度
+  if (S.dirtAnim) { const a = S.dirtAnim; S.dirt = lerp(a.from, a.to, smoothstep(a.t0, a.t1, t)) }
+  else if (w >= 0) S.dirt = 1 - smoothstep(0.8, 3.6, w)
+  const d = S.dirt
+  dustMat.opacity = d * 0.88; dust.visible = d > 0.01
+  for (const o of [front, ...filters]) o.scale.setScalar(S.hide ? 1e-4 : 1)
+  finMat.color.lerpColors(DIRT.fin[0], DIRT.fin[1], d); finMat.metalness = lerp(1, 0.25, d); finMat.roughness = lerp(0.42, 0.85, d)
+  for (const m of [fanMat]) m.color.lerpColors(DIRT.fan[0], DIRT.fan[1], d)
+  filterMat.color.lerpColors(DIRT.filter[0], DIRT.filter[1], d)
+  panPlastic.color.lerpColors(DIRT.pan[0], DIRT.pan[1], d * 0.8)
+
+  // ファン（運転中のみ）。表示は 1:12 に減速、数値は実回転
+  const target = S.run ? rpm.value : 0
+  S.n = approach(S.n, target, 0.9, dt)
+  fan.rotation.x -= (S.n / 60) * Math.PI * 2 * dt / 12
+  const { Uc, Q } = airflow(S.n, d)
+  lab.setHero(Q * 60, { state: S.n < 20 ? '停止中' : d > 0.5 ? '目詰まり' : '運転中', sub: `周速 ${fmt(Uc, 1)} m/s · 汚れ ${fmt(d * 100)} % · 吹出 ${fmt(Q / (0.065 * 0.67), 1)} m/s` })
+
+  // ルーバー
+  S.louver = approach(S.louver, S.run && S.n > 100 ? 1 : 0, 0.5, dt)
+  louverPivot.rotation.x = S.louver * 0.65
+
+  // 洗浄ノズル・しぶき・泡
+  const sp = spray.geometry.attributes.position.array, sc = spray.geometry.attributes.color.array
+  const showLance = w >= 0 && w < 3.9 && !S.fxOff
+  lance.visible = showLance
+  if (showLance) { const nz = nozzleAt(Math.min(w, 3.4)); lance.position.copy(nz); lance.rotation.set(-0.35, 0.18, 0) }
+  for (let i = 0; i < NSPR; i++) {
+    const p = sprayP[i]; const a = w - p.s
+    if (S.fxOff || w < 0 || a < 0 || a > 0.14 + p.stick + 0.9) { col4(sc, i, 0, 0, 0, 0); continue }
+    let x, y, z, al, r = 0.72, g = 0.86, b = 1.0
+    if (a < 0.14) {           // 飛んでいく
+      const n0 = nozzleAt(p.s), k = a / 0.14
+      x = lerp(n0.x, p.x, k) + p.j[0] * 0.02 * k; y = lerp(n0.y - 0.01, p.y, k) + p.j[1] * 0.02 * k; z = lerp(n0.z - 0.03, p.z, k)
+      al = 0.55
+    } else if (a < 0.14 + p.stick) {   // 泡になって付く（だんだん汚れの色に）
+      const k = (a - 0.14) / p.stick
+      x = p.x + p.j[0] * 0.004; y = p.y - k * 0.012; z = p.z + 0.004 + p.j[2] * 0.004
+      al = 0.9
+      r = lerp(0.72, 0.5, k); g = lerp(0.86, 0.36, k); b = lerp(1.0, 0.2, k)
+    } else {                  // 汚れ水になって落ちる → ドレンパンへ
+      const k = a - 0.14 - p.stick
+      x = p.x; z = lerp(p.z, 0.19, Math.min(1, k * 3)); y = Math.max(Y0 + 0.07, p.y - 0.012 - 4.9 * k * k * 0.6)
+      al = y <= Y0 + 0.0705 ? 0 : 0.9
+      r = 0.42; g = 0.27; b = 0.13
+    }
+    sp[i * 3] = x; sp[i * 3 + 1] = y; sp[i * 3 + 2] = z; col4(sc, i, r, g, b, al)
+  }
+  spray.geometry.attributes.position.needsUpdate = true; spray.geometry.attributes.color.needsUpdate = true
+
+  // ドレンパンの水位、ホースから出る汚れ水、バケツ
+  const level = w < 0 ? 0 : smoothstep(0.8, 3.2, w) * (1 - smoothstep(9.0, 11.5, w))
+  panWater.visible = level > 0.01; panWater.scale.y = 1
+  panWater.position.y = (level - 1) * 0.013
+  const dp = drops.geometry.attributes.position.array, dc = drops.geometry.attributes.color.array
+  const bl = w < 0 ? 0 : smoothstep(3.6, 10.5, w)
+  bucketWater.visible = bl > 0.01; bucketWater.position.y = 0.01 + bl * 0.06
+  const surf = 0.01 + bl * 0.06 + 0.004
+  for (let i = 0; i < NDROP; i++) {
+    const p = dropP[i]; const a = w - p.s
+    const fall = Math.sqrt(2 * (HOSE_END.y - surf) / 9.81)
+    if (S.fxOff || w < 0 || a < 0 || a > fall) { col4(dc, i, 0, 0, 0, 0); continue }
+    dp[i * 3] = HOSE_END.x + p.j[0] * 0.006; dp[i * 3 + 1] = HOSE_END.y - 4.905 * a * a; dp[i * 3 + 2] = HOSE_END.z + p.j[1] * 0.006 + a * 0.05
+    col4(dc, i, 0.4, 0.25, 0.12, 0.95)
+  }
+  drops.geometry.attributes.position.needsUpdate = true; drops.geometry.attributes.color.needsUpdate = true
+  // 連続した茶色い水の筋
+  const flowing = !S.fxOff && w >= 3.7 && w < 9.5
+  stream.visible = flowing
+  if (flowing) { stream.position.copy(HOSE_END); stream.scale.set(1, HOSE_END.y - surf, 1) }
+
+  // 空気の粒（フィンの寄りで、通り道を通る空気。量と速さは風量 Q に比例）
+  const { Q0 } = airflow(Math.max(S.n, 1), 0)
+  const kq = clamp(Q / Q0)
+  S.air += dt * 0.9 * kq
+  const ap = air.geometry.attributes.position.array, ac = air.geometry.attributes.color.array
+  for (let i = 0; i < NAIR; i++) {
+    const q = airP[i]
+    const show = S.dots > 0 && q.r < kq * kq * 1.05
+    if (!show) { col4(ac, i, 0, 0, 0, 0); continue }
+    const u = (S.air * q.sp + q.ph) % 1
+    const z = lerp(0.34, 0.12, u), y = Y0 + q.y + (u > 0.6 ? -(u - 0.6) * 0.12 : 0)
+    ap[i * 3] = q.x; ap[i * 3 + 1] = y; ap[i * 3 + 2] = z
+    col4(ac, i, 0.45, 0.78, 1.0, S.dots * 0.9 * Math.sin(Math.PI * u))
+  }
+  air.geometry.attributes.position.needsUpdate = true; air.geometry.attributes.color.needsUpdate = true
+
+  // きれいな風の矢印（ルーバーが開いて、パネルが閉じている時）
+  S.arrows = approach(S.arrows, S.louver > 0.6 && lab.state.explode < 0.05 && lab.state.cut < 0.05 ? 1 : 0, 0.4, dt)
+  // 矢印の届く距離と大きさは風量に比例（見た目は強調している）
+  const reach = lerp(0.3, 1, smoothstep(0.6, 1, kq))
+  for (const a of arrows) {
+    const u = ((t * 0.55 * reach + a.userData.ph) % 1) * reach
+    a.scale.setScalar(lerp(0.6, 1, smoothstep(0.6, 1, kq)))
+    const p = a.userData.curve.getPointAt(u), tg = a.userData.curve.getTangentAt(u)
+    a.position.copy(p); a.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), tg)
+    const al = S.arrows * Math.sin(Math.PI * u / reach) * 0.85
+    a.traverse((m) => { if (m.material) m.material.opacity = al }); a.visible = al > 0.01
+  }
+})
+
+lab.how('室内機は実寸（幅 0.80 m）。風量はクロスフローファンの簡易式で、汚れ度に応じて熱交換器の圧力損失が増える分だけ下がる。回転は 1:12 に減速して表示。フィンは 4 mm 間隔に間引いて描画（実物は約 1.3 mm）。', [
+  'U = π D n / 60', 'Q0 = φ U D L   (φ = 0.55)', 'Q = Q0 / √(1 + 1.2 d)',
+])
+
+// ---------------------------------------------------------------- 30秒の縦長フィルム（改訂2版）：場面ごとにカメラ固定、切り替えはカット
+const CAPS = [
+  [0, 2, '半年、洗っていないだけで、こうなります。'],
+  [2, 5, '外側はきれいでも、中は別です。'],
+  [5, 9, 'フィンが冷やし、ファンが風を送ります。'],
+  [9, 13, 'ホコリとカビが、隙間を埋めていきます。'],
+  [13, 17, '通り道が細くなり、効きにくくなります。'],
+  [17, 21, '効かない分、長く動いて電気を使います。'],
+  [21, 25, '高圧洗浄で、奥まで水を通します。'],
+  [25, 28, '汚れた水は、受け皿から外へ。'],
+  [28, 30.01, 'エアコンは、空気の通り道。<br>年に一度、通してください。'],
+]
+const capEl = document.querySelector('.aj-cap div')
+let capNow = -1
+lab.onTick((dt, lab) => {
+  if (!lab.filmMode) return
+  const t = lab.ft ?? 0
+  const i = CAPS.findIndex(([a, b]) => t >= a && t < b)
+  if (i !== capNow) { capNow = i; if (i >= 0) capEl.innerHTML = CAPS[i][2] }
+  if (i >= 0) { const k = clamp((t - CAPS[i][0]) / 0.25); capEl.style.opacity = String(k); capEl.style.transform = `translateY(${(1 - k) * 10}px)` } else capEl.style.opacity = '0'
+})
+
+// 場面ごとの固定カメラ
+const V = {
+  fins:  { az: -12, el: 6, dist: 0.34, target: [0.1, Y0 + 0.15, 0.2], fov: 36, frameX: 0 },     // フィンの寄り
+  whole: { az: -18, el: 8, dist: 2.35, target: [-0.02, 0.76, 0.1], fov: 36, frameX: 0 },        // 全体
+  cut:   { az: -60, el: 13, dist: 1.25, target: [0.06, Y0 + 0.13, 0.12], fov: 36, frameX: 0 },  // 断面
+  wash:  { az: -52, el: 14, dist: 1.0, target: [0.1, Y0 + 0.15, 0.15], fov: 36, frameX: 0 },    // 洗浄
+  air:   { az: -14, el: 6, dist: 2.3, target: [-0.02, 0.64, 0.12], fov: 36, frameX: 0 },        // 風（前後比較）
+  drain: { az: -30, el: 9, dist: 1.6, target: [0.3, 0.5, 0.1], fov: 36, frameX: 0 },            // 排水
+}
+const SCENES = [[0, 2, 'fins'], [2, 5, 'whole'], [5, 9, 'cut'], [9, 17, 'fins'], [17, 21, 'air'], [21, 25, 'wash'], [25, 28, 'drain'], [28, 30, 'air']]
+const shots = []
+for (const [a, b, k] of SCENES) shots.push({ t: a, ...V[k] }, { t: b - 0.001, ...V[k] })
+const snapRun = (on) => { S.run = on ? 1 : 0; S.n = on ? rpm.value : 0; S.louver = on ? 1 : 0; S.arrows = on ? 1 : 0 }
+lab.film('main', {
+  len: 30,
+  shots,
+  events: [
+    { t: 0, snap: { explode: 0, cut: 0, labels: 0, xray: 0 }, do: (lab) => { lab.time = 0; snapRun(0); S.washT0 = -1; S.dirtAnim = null; S.dirt = 1; S.hide = true; S.dots = 0; S.fxOff = false } },
+    { t: 2, do: () => { S.hide = false } },
+    { t: 2.6, set: { explode: 1 } },                                   // カバーが外れる
+    { t: 5, snap: { explode: 1, cut: 1, labels: 1 } },                  // 断面
+    { t: 9, snap: { cut: 0, labels: 0 }, do: () => { S.hide = true; snapRun(1); S.dots = 1; S.dirtAnim = { t0: 9.3, t1: 13.5, from: 0.05, to: 1 } } },
+    { t: 17, snap: { explode: 0 }, do: () => { S.hide = false; S.dots = 0; S.dirtAnim = null; S.dirt = 1; snapRun(1) } },   // 前：弱い風
+    { t: 21, snap: { explode: 1, cut: 1 }, do: (lab) => { snapRun(0); S.washT0 = lab.time } },                            // 高圧洗浄
+    { t: 28, snap: { explode: 0, cut: 0 }, do: () => { S.fxOff = true; S.washT0 = -1; S.dirt = 0; snapRun(1) } },          // 後：きれいな風
+  ],
+})
+lab.start()
+</script>
+</body>
+</html>
